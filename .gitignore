@@ -1,0 +1,9 @@
+*.o
+*.mod
+*.x
+
+bin/
+config.log
+config.status
+configure.msg
+make.sys  
