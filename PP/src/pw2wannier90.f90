@@ -2406,6 +2406,7 @@ subroutine orient_gf_spinor()
 
    integer :: iw, ipol, istart
    logical :: spin_z_pos, spin_z_neg
+   complex(dp) :: fac(2)
 
 
    gf_spinor = (0.0d0, 0.0d0)
@@ -2430,7 +2431,16 @@ subroutine orient_gf_spinor()
          write(*,*), 'DEBUG orient', iw, spin_z_pos, ipol, istart
          gf_spinor(istart:istart+npw-1, iw) = gf(1:npw, iw)
       else
-         call errore('orient_gf_spinor', 'quantization axis not along z')
+        if(spin_eig(iw)==1) then
+           fac(1)=(1.0_dp/sqrt(1+spin_qaxis(3,iw)))*(spin_qaxis(3,iw)+1)*cmplx(1.0d0,0.0d0,dp)
+           fac(2)=(1.0_dp/sqrt(1+spin_qaxis(3,iw)))*cmplx(spin_qaxis(1,iw),spin_qaxis(2,iw),dp)
+        else
+           fac(1)=(1.0_dp/sqrt(1+spin_qaxis(3,iw)))*(spin_qaxis(3,iw))*cmplx(1.0d0,0.0d0,dp)
+           fac(2)=(1.0_dp/sqrt(1-spin_qaxis(3,iw)))*cmplx(spin_qaxis(1,iw),spin_qaxis(2,iw),dp)
+        endif
+        gf_spinor(1:npw, iw) = gf(1:npw, iw) * fac(1)
+        gf_spinor(npwx + 1:npwx + npw, iw) = gf(1:npw, iw) * fac(2)
+         !call errore('orient_gf_spinor', 'quantization axis not along z')
       endif
    enddo
 end subroutine
