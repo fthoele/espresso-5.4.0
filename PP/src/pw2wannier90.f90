@@ -1618,34 +1618,21 @@ SUBROUTINE compute_spin
                                 ENDIF
                              ENDDO
                            !!!!! CHECK: m, n in same order (cf pauli matrices) as above for evec part
-                             !IF (lsigma(1)) THEN
                                 DO ih = 1, nh(np)
                                    DO jh = 1, nh(np)
                                       sigma_x_aug = sigma_x_aug &
                                         + qq(ih,jh,np) * ( be_m(jh,2)*conjg(be_n(ih,1))+ be_m(jh,1)*conjg(be_n(ih,2)) )
-                                   ENDDO
-                                ENDDO
-                             !ENDIF
-                             !IF (lsigma(2)) THEN
-                                DO ih = 1, nh(np)
-                                   DO jh = 1, nh(np)
+
                                       sigma_y_aug = sigma_y_aug &
                                       + qq(ih,jh,np) * (  &
                                         be_m(jh,1) * conjg(be_n(ih,2)) &
                                         - be_m(jh,2) * conjg(be_n(ih,1)) &
                                         ) * (0.0d0, 1.0d0)
-                                   ENDDO
-                                ENDDO
-                             !ENDIF
-                             !IF (lsigma(3)) THEN
-                                DO ih = 1, nh(np)                                   
-                                   DO jh = 1, nh(np)
+
                                       sigma_z_aug = sigma_z_aug &
                                       + qq(ih,jh,np) * ( be_m(jh,1)*conjg(be_n(ih,1)) - be_m(jh,2)*conjg(be_n(ih,2)) )
                                    ENDDO
-                                ENDDO
-                             !ENDIF
-                             
+                                ENDDO                             
                              !
                              ijkb0 = ijkb0 + nh(np)
                              !
@@ -1663,11 +1650,7 @@ SUBROUTINE compute_spin
                        !
                     ENDIF
                     !
-                 ENDDO
-
-                 call mp_sum(sigma_x_aug,intra_pool_comm)
-                 call mp_sum(sigma_y_aug,intra_pool_comm)
-                 call mp_sum(sigma_z_aug,intra_pool_comm)
+                 ENDDO                
                  spn_aug(1, counter) = sigma_x_aug
                  spn_aug(2, counter) = sigma_y_aug
                  spn_aug(3, counter) = sigma_z_aug
@@ -2231,23 +2214,10 @@ SUBROUTINE compute_amn
          CALL init_us_2 (npw, igk, xk (1, ik), vkb)
          ! below we compute the product of beta functions with trial func.
          IF (gamma_only) THEN
-            CALL calbec ( npw, vkb, gf, becp, n_proj )
-         
-         ELSE if (noncolin) then
-                       
-            if (ik == 1) then
-              write(*,*) 'DEBUG gf_spinor', SHAPE(gf_spinor), 'becp', SHAPE(becp%nc), 'vkb', SHAPE(vkb)
-              iun_debug = find_free_unit()
-              IF (ionode) OPEN (unit=iun_debug, file="gf_spinor.dat",form='formatted')
-              write(iun_debug, *) shape(gf_spinor)
-              write(iun_debug, '(10F15.10)') gf_spinor
-              close(iun_debug)
-            endif
-
+            CALL calbec ( npw, vkb, gf, becp, n_proj )         
+         ELSE if (noncolin) then                     
             CALL calbec ( npw, vkb, gf_spinor, becp, n_proj )
-
-         else
-            write(*,*) 'DEBUG gf', SHAPE(gf), 'becp', SHAPE(becp%nc), 'vkb', SHAPE(vkb)
+         else            
             CALL calbec ( npw, vkb, gf, becp, n_proj )
          ENDIF
          
@@ -2344,9 +2314,15 @@ SUBROUTINE compute_amn
                      DO ipol=1,npol
                         istart = (ipol-1)*npwx + 1
                         amn_tmp=(0.0_dp,0.0_dp)
-                        amn_tmp = zdotc(npw,evc(istart,ibnd),1,sgf(1,iw),1)
-                        CALL mp_sum(amn_tmp, intra_pool_comm)
-                        amn=amn+fac(ipol)*amn_tmp
+                        if (any_uspp) then
+                          amn_tmp = zdotc(npw,evc(istart,ibnd),1,sgf_spinor(istart,iw),1)
+                          CALL mp_sum(amn_tmp, intra_pool_comm)
+                          amn=amn+amn_tmp
+                        else
+                          amn_tmp = zdotc(npw,evc(istart,ibnd),1,sgf(1,iw),1)                        
+                          CALL mp_sum(amn_tmp, intra_pool_comm)
+                          amn=amn+fac(ipol)*amn_tmp
+                        endif
                      enddo
                      ibnd1=ibnd1+1
                      IF (wan_mode=='standalone') THEN
