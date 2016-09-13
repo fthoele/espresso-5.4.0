@@ -1495,10 +1495,6 @@ SUBROUTINE compute_spin
    endif
 
 
-
-   !IF(any_uspp .and. noncolin) CALL errore('pw2wannier90',&
-   !    'NCLS calculation not implemented with USP',1)
-
    if (write_spn) allocate(spn(3,(num_bands*(num_bands+1))/2))
    if (write_spn) allocate(spn_aug(3,(num_bands*(num_bands+1))/2))
    spn_aug = (0.0d0, 0.0d0)
@@ -1518,11 +1514,6 @@ SUBROUTINE compute_spin
             OPEN (unit=iun_spn, file=trim(seedname)//".spn",form='formatted')
             WRITE (iun_spn,*) header !ivo
             WRITE (iun_spn,*) nbnd-nexband,iknum
-
-
-            OPEN (unit=iun_spn_aug, file=trim(seedname)//".spn_aug",form='formatted')
-            WRITE (iun_spn_aug,*) header !ivo
-            WRITE (iun_spn_aug,*) nbnd-nexband,iknum
          else
             OPEN (unit=iun_spn, file=trim(seedname)//".spn",form='unformatted')
             WRITE (iun_spn) header !ivo
@@ -1539,7 +1530,6 @@ SUBROUTINE compute_spin
       ikevc = ik + ikstart - 1
       CALL davcio (evc, 2*nwordwfc, iunwfc, ikevc, -1 )
       CALL gk_sort (xk(1,ik), ngm, g, gcutw, npw, igk, g2kin)
-
       !
       !  USPP
       !
@@ -1570,23 +1560,16 @@ SUBROUTINE compute_spin
                spn(2,counter)=sigma_y
                spn(3,counter)=sigma_z
 
-
-               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                if (any_uspp) then
                  sigma_x_aug = (0.0d0, 0.0d0)
                  sigma_y_aug = (0.0d0, 0.0d0)
                  sigma_z_aug = (0.0d0, 0.0d0)
                  ijkb0 = 0
-                 !
+                 
                  DO np = 1, ntyp
-                    !
                     IF ( upf(np)%tvanp ) THEN
-                       !
                        DO na = 1, nat
-                          !
                           IF (ityp(na)==np) THEN
-                             !
                              be_m = 0.d0
                              be_n = 0.d0
                              DO ih = 1, nh(np)
@@ -1616,8 +1599,7 @@ SUBROUTINE compute_spin
                                       be_m(ih, is1) = becp%nc(ikb, is1, m)
                                    ENDDO
                                 ENDIF
-                             ENDDO
-                           !!!!! CHECK: m, n in same order (cf pauli matrices) as above for evec part
+                             ENDDO                           
                                 DO ih = 1, nh(np)
                                    DO jh = 1, nh(np)
                                       sigma_x_aug = sigma_x_aug &
@@ -1625,39 +1607,27 @@ SUBROUTINE compute_spin
 
                                       sigma_y_aug = sigma_y_aug &
                                       + qq(ih,jh,np) * (  &
-                                        be_m(jh,1) * conjg(be_n(ih,2)) &
-                                        - be_m(jh,2) * conjg(be_n(ih,1)) &
+                                          be_m(jh,1) * conjg(be_n(ih,2)) &
+                                          - be_m(jh,2) * conjg(be_n(ih,1)) &
                                         ) * (0.0d0, 1.0d0)
 
                                       sigma_z_aug = sigma_z_aug &
                                       + qq(ih,jh,np) * ( be_m(jh,1)*conjg(be_n(ih,1)) - be_m(jh,2)*conjg(be_n(ih,2)) )
                                    ENDDO
                                 ENDDO                             
-                             !
                              ijkb0 = ijkb0 + nh(np)
-                             !
                           ENDIF
-                          !
                        ENDDO
-                       !
                     ELSE
-                       !
                        DO na = 1, nat
-                          !
                           IF ( ityp(na) == np ) ijkb0 = ijkb0 + nh(np)
-                          !
                        ENDDO
-                       !
                     ENDIF
-                    !
                  ENDDO                
                  spn_aug(1, counter) = sigma_x_aug
                  spn_aug(2, counter) = sigma_y_aug
                  spn_aug(3, counter) = sigma_z_aug
-               endif
-               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
+               endif              
             ENDDO
          ENDDO
          if(ionode) then ! root node for i/o
@@ -1667,13 +1637,12 @@ SUBROUTINE compute_spin
                   do n=1,m
                      counter=counter+1
                      do s=1,3
-                         write(iun_spn,'(2es26.16)') spn(s,counter) + spn_aug(s,counter)
-                         write(iun_spn_aug,'(2es26.16)') spn_aug(s,counter)
+                         write(iun_spn,'(2es26.16)') spn(s,counter) + spn_aug(s,counter)                         
                       enddo
                    enddo
                 enddo
              else ! fast unformatted way
-                write(iun_spn) ((spn(s,m),s=1,3),m=1,((num_bands*(num_bands+1))/2))
+                write(iun_spn) ((spn(s,m) + spn_aug(s,m),s=1,3),m=1,((num_bands*(num_bands+1))/2))
              endif
           endif ! end of root activity 
  
