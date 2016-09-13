@@ -2118,8 +2118,6 @@ SUBROUTINE compute_amn
    LOGICAL            :: any_uspp, opnd, exst,spin_z_pos, spin_z_neg
    INTEGER            :: istart, iun_amn_gf
 
-   INTEGER :: iun_debug
-
    !nocolin: we have half as many projections g(r) defined as wannier
    !         functions. We project onto (1,0) (ie up spin) and then onto
    !         (0,1) to obtain num_wann projections. jry
@@ -2280,7 +2278,6 @@ SUBROUTINE compute_amn
                      fac(1)=(1.0_dp/sqrt(1+spin_qaxis(3,iw)))*(spin_qaxis(3,iw))*cmplx(1.0d0,0.0d0,dp)
                      fac(2)=(1.0_dp/sqrt(1-spin_qaxis(3,iw)))*cmplx(spin_qaxis(1,iw),spin_qaxis(2,iw),dp)
                   endif
-                  write(*,*) 'DEBUG general routine', fac(1), fac(2), spin_qaxis(:,iw)
                   ibnd1 = 0
                   DO ibnd = 1,nbnd
                      IF (excluded_band(ibnd)) CYCLE
