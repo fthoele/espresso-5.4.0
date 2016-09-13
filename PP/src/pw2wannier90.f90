@@ -2286,54 +2286,6 @@ SUBROUTINE compute_amn
                   ENDDO
                ENDDO
             ENDDO
-        else if (any_uspp) then
-
-            !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-         
-              DO iw = 1,n_proj
-               spin_z_pos=.false.;spin_z_neg=.false.
-               ! detect if spin quantisation axis is along z
-               if((abs(spin_qaxis(1,iw)-0.0d0)<eps6).and.(abs(spin_qaxis(2,iw)-0.0d0)<eps6) &
-                    .and.(abs(spin_qaxis(3,iw)-1.0d0)<eps6)) then
-                  spin_z_pos=.true.
-               elseif(abs(spin_qaxis(1,iw)-0.0d0)<eps6.and.abs(spin_qaxis(2,iw)-0.0d0)<eps6 &
-                    .and.abs(spin_qaxis(3,iw)+1.0d0)<eps6) then
-                  spin_z_neg=.true.
-               endif
-               if(spin_z_pos .or. spin_z_neg) then
-                  ibnd1 = 0
-                  DO ibnd = 1,nbnd
-                     IF (excluded_band(ibnd)) CYCLE
-                     if(spin_z_pos) then
-                        ipol=(3-spin_eig(iw))/2
-                     else
-                        ipol=(3+spin_eig(iw))/2
-                     endif                     
-                     amn = (0.0_dp,0.0_dp)
-                     amn = zdotc(npw, evc(1, ibnd), 1, sgf_spinor(1, iw), 1)
-                     amn = amn + zdotc(npw, evc(npwx+1, ibnd), 1, sgf_spinor(npwx+1, iw), 1)
-                     CALL mp_sum(amn, intra_pool_comm)
-                     ibnd1=ibnd1+1                     
-
-                     IF (wan_mode=='standalone') THEN
-                        IF (ionode) WRITE(iun_amn,'(3i5,2f18.12)') ibnd1, iw, ik, amn
-                     ELSEIF (wan_mode=='library') THEN
-                        a_mat(ibnd1,iw+n_proj*(ipol-1),ik) = amn
-                     ELSE
-                        CALL errore('compute_amn',' value of wan_mode not recognised',1)
-                     ENDIF
-                  ENDDO
-                else 
-                  call errore('compute_amn', 'uspp and noncolin not yet with general axis')
-               endif
-             enddo
-                !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-                !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-                !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-
          ELSE
             DO iw = 1,n_proj
                spin_z_pos=.false.;spin_z_neg=.false.
@@ -2355,8 +2307,13 @@ SUBROUTINE compute_amn
                         ipol=(3+spin_eig(iw))/2
                      endif
                      istart = (ipol-1)*npwx + 1
-                     amn=(0.0_dp,0.0_dp)
-                     amn = zdotc(npw,evc(istart,ibnd),1,sgf(1,iw),1)
+                     amn=(0.0_dp,0.0_dp)                     
+                     if (any_uspp) then
+                        amn = zdotc(npw, evc(1, ibnd), 1, sgf_spinor(1, iw), 1)
+                        amn = amn + zdotc(npw, evc(npwx+1, ibnd), 1, sgf_spinor(npwx+1, iw), 1)
+                     else
+                        amn = zdotc(npw,evc(istart,ibnd),1,sgf(1,iw),1)
+                     endif
                      CALL mp_sum(amn, intra_pool_comm)
                      ibnd1=ibnd1+1
                      IF (wan_mode=='standalone') THEN
