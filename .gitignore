@@ -1,9 +1,14 @@
 *.o
+*.a
 *.mod
 *.x
+*.tmp
 
 bin/
 config.log
 config.status
 configure.msg
 make.sys  
+
+.DS_Store
+S3DE/iotk/iotk

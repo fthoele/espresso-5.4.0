@@ -38,6 +38,8 @@ module wannier
    integer  :: n_wannier !number of WF
    integer  :: n_proj    !number of projection 
    complex(DP), allocatable :: gf(:,:)  ! guding_function(npwx,n_wannier)
+   complex(DP), allocatable :: gf_spinor(:,:) 
+   complex(DP), allocatable :: sgf_spinor(:,:) 
    integer               :: ispinw, ikstart, ikstop, iknum
    character(LEN=15)     :: wan_mode    ! running mode
    logical               :: logwann, wvfn_formatted, write_unk, &
@@ -1057,6 +1059,7 @@ SUBROUTINE compute_mmn
    USE mp_global,       ONLY : intra_pool_comm
    USE mp,              ONLY : mp_sum
    USE noncollin_module,ONLY : noncolin, npol
+   USE spin_orb,             ONLY : lspinorb
    USE gvecw,           ONLY : gcutw
    USE wannier
 
@@ -1070,9 +1073,9 @@ SUBROUTINE compute_mmn
    INTEGER :: ikb, jkb, ih, jh, na, nt, ijkb0, ind, nbt
    INTEGER :: ikevc, ikpevcq, s, counter
    COMPLEX(DP), ALLOCATABLE :: phase(:), aux(:), aux2(:), evcq(:,:), &
-                               becp2(:,:), Mkb(:,:), aux_nc(:,:) 
+                               becp2(:,:), Mkb(:,:), aux_nc(:,:), becp2_nc(:,:,:)
    real(DP), ALLOCATABLE    :: rbecp2(:,:)
-   COMPLEX(DP), ALLOCATABLE :: qb(:,:,:,:), qgm(:)
+   COMPLEX(DP), ALLOCATABLE :: qb(:,:,:,:), qgm(:), qq_so(:,:,:,:)
    real(DP), ALLOCATABLE    :: qg(:), ylm(:,:), dxk(:,:)
    INTEGER, ALLOCATABLE     :: igkq(:)
    COMPLEX(DP)              :: mmn, zdotc, phase1
@@ -1090,8 +1093,8 @@ SUBROUTINE compute_mmn
    
    any_uspp = any(upf(1:ntyp)%tvanp)
 
-   IF(any_uspp .and. noncolin) CALL errore('pw2wannier90',&
-       'NCLS calculation not implimented with USP',1)
+   !IF(any_uspp .and. noncolin) CALL errore('pw2wannier90',&
+   !    'NCLS calculation not implimented with USP',1)
 
    ALLOCATE( phase(dffts%nnr), igkq(npwx) )
    ALLOCATE( evcq(npol*npwx,nbnd) )
@@ -1126,6 +1129,8 @@ SUBROUTINE compute_mmn
       CALL allocate_bec_type ( nkb, nbnd, becp )
       IF (gamma_only) THEN
          ALLOCATE ( rbecp2(nkb,nbnd))
+      else if (noncolin) then
+         ALLOCATE ( becp2_nc(nkb,2,nbnd) )
       ELSE
          ALLOCATE ( becp2(nkb,nbnd) )
       ENDIF
@@ -1158,6 +1163,7 @@ SUBROUTINE compute_mmn
 
       ALLOCATE( ylm(nbt,lmaxq*lmaxq), qgm(nbt) )
       ALLOCATE( qb (nhm, nhm, ntyp, nbt) )
+      ALLOCATE( qq_so (nhm, nhm, 4, ntyp) )
       !
       CALL ylmr2 (lmaxq*lmaxq, nbt, dxk, qg, ylm)
       qg(:) = sqrt(qg(:)) * tpiba
@@ -1223,6 +1229,14 @@ SUBROUTINE compute_mmn
             ! below we compute the product of beta functions with |psi>
             IF (gamma_only) THEN
                CALL calbec ( npwq, vkb, evcq, rbecp2 )
+            else if (noncolin) then
+               CALL calbec ( npwq, vkb, evcq, becp2_nc )
+
+               if (lspinorb) then
+                  qq_so = (0.0d0, 0.0d0)
+                  call transform_qq_so(qb(:,:,:,ind), qq_so)
+               endif
+
             ELSE
                CALL calbec ( npwq, vkb, evcq, becp2 )
             ENDIF
@@ -1255,6 +1269,29 @@ SUBROUTINE compute_mmn
                                             phase1 * qb(ih,jh,nt,ind) * &
                                             becp%r(ikb,m) * rbecp2(jkb,n)
                                     ENDDO
+                                    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                                    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                                 else if (noncolin) then
+                                    DO n=1,nbnd
+                                       IF (excluded_band(n)) CYCLE
+                                       if (lspinorb) then
+                                          Mkb(m,n) = Mkb(m,n) + &
+                                            phase1 * ( &
+                                              qq_so(ih,jh,1,nt) * conjg( becp%nc(ikb, 1, m) ) * becp2_nc(jkb, 1, n) &
+                                             +qq_so(ih,jh,2,nt) * conjg( becp%nc(ikb, 1, m) ) * becp2_nc(jkb, 2, n) &
+                                             +qq_so(ih,jh,3,nt) * conjg( becp%nc(ikb, 2, m) ) * becp2_nc(jkb, 1, n) &
+                                             +qq_so(ih,jh,4,nt) * conjg( becp%nc(ikb, 2, m) ) * becp2_nc(jkb, 2, n) &
+                                             )
+                                       else
+                                          Mkb(m,n) = Mkb(m,n) + &
+                                            phase1 * qb(ih,jh,nt,ind) * &
+                                            (conjg( becp%nc(ikb, 1, m) ) * becp2_nc(jkb, 1, n) &
+                                              + conjg( becp%nc(ikb, 2, m) ) * becp2_nc(jkb, 2, n) )
+                                       endif
+                                    ENDDO
+
+                                    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                                    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                                  ELSE
                                     DO n=1,nbnd
                                        IF (excluded_band(n)) CYCLE
@@ -1385,6 +1422,8 @@ SUBROUTINE compute_mmn
       CALL deallocate_bec_type (becp)
       IF (gamma_only) THEN
           DEALLOCATE (rbecp2)
+       else if (noncolin) then
+         deallocate (becp2_nc)
        ELSE
           DEALLOCATE (becp2)
        ENDIF
@@ -1432,6 +1471,10 @@ SUBROUTINE compute_spin
    USE lsda_mod,        ONLY : nspin
    USE constants,       ONLY : rytoev
 
+   USE uspp_param,           ONLY : upf, nh, nhm
+   USE uspp,                 ONLY: qq, nhtol,nhtoj, indv
+   USE spin_orb,             ONLY : fcoef
+
    IMPLICIT NONE
    !
    INTEGER, EXTERNAL :: find_free_unit
@@ -1450,15 +1493,30 @@ SUBROUTINE compute_spin
    LOGICAL                  :: nn_found
    INTEGER                  :: istart,iend
    COMPLEX(DP)              :: sigma_x,sigma_y,sigma_z,cdum1,cdum2
-   complex(DP), allocatable :: spn(:,:)
+   complex(DP), allocatable :: spn(:,:), spn_aug(:,:)
+
+   integer  :: iun_spn_aug, np, is1, is2, kh, kkb
+   complex(dp) :: sigma_x_aug, sigma_y_aug, sigma_z_aug
+   COMPLEX(DP), ALLOCATABLE :: be_n(:,:), be_m(:,:)
+
 
    any_uspp = any(upf(1:ntyp)%tvanp)
 
-   IF(any_uspp .and. noncolin) CALL errore('pw2wannier90',&
-       'NCLS calculation not implemented with USP',1)
+   if (any_uspp) then
+      CALL init_us_1
+      CALL allocate_bec_type ( nkb, nbnd, becp )
+      ALLOCATE(be_n(nhm,2))
+      ALLOCATE(be_m(nhm,2))
+   endif
+
+
+
+   !IF(any_uspp .and. noncolin) CALL errore('pw2wannier90',&
+   !    'NCLS calculation not implemented with USP',1)
 
    if (write_spn) allocate(spn(3,(num_bands*(num_bands+1))/2))
-
+   if (write_spn) allocate(spn_aug(3,(num_bands*(num_bands+1))/2))
+   spn_aug = (0.0d0, 0.0d0)
 !ivo
 ! not sure this is really needed
    if((write_spn.or.write_uhu.or.write_uIu).and.wan_mode=='library')&
@@ -1475,6 +1533,11 @@ SUBROUTINE compute_spin
             OPEN (unit=iun_spn, file=trim(seedname)//".spn",form='formatted')
             WRITE (iun_spn,*) header !ivo
             WRITE (iun_spn,*) nbnd-nexband,iknum
+
+
+            OPEN (unit=iun_spn_aug, file=trim(seedname)//".spn_aug",form='formatted')
+            WRITE (iun_spn_aug,*) header !ivo
+            WRITE (iun_spn_aug,*) nbnd-nexband,iknum
          else
             OPEN (unit=iun_spn, file=trim(seedname)//".spn",form='unformatted')
             WRITE (iun_spn) header !ivo
@@ -1491,6 +1554,17 @@ SUBROUTINE compute_spin
       ikevc = ik + ikstart - 1
       CALL davcio (evc, 2*nwordwfc, iunwfc, ikevc, -1 )
       CALL gk_sort (xk(1,ik), ngm, g, gcutw, npw, igk, g2kin)
+
+      !
+      !  USPP
+      !
+      IF(any_uspp) THEN
+         CALL init_us_2 (npw, igk, xk(1,ik), vkb)
+         ! below we compute the product of beta functions with |psi>
+         CALL calbec (npw, vkb, evc, becp)
+      ENDIF
+
+
       IF(write_spn.and.noncolin) THEN
          counter=0
          DO m=1,nbnd
@@ -1510,6 +1584,112 @@ SUBROUTINE compute_spin
                spn(1,counter)=sigma_x
                spn(2,counter)=sigma_y
                spn(3,counter)=sigma_z
+
+
+               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+               if (any_uspp) then
+                 sigma_x_aug = (0.0d0, 0.0d0)
+                 sigma_y_aug = (0.0d0, 0.0d0)
+                 sigma_z_aug = (0.0d0, 0.0d0)
+                 ijkb0 = 0
+                 !
+                 DO np = 1, ntyp
+                    !
+                    IF ( upf(np)%tvanp ) THEN
+                       !
+                       DO na = 1, nat
+                          !
+                          IF (ityp(na)==np) THEN
+                             !
+                             be_m = 0.d0
+                             be_n = 0.d0
+                             DO ih = 1, nh(np)
+                                ikb = ijkb0 + ih
+                                IF (upf(np)%has_so) THEN
+                                    DO kh = 1, nh(np)
+                                       IF ((nhtol(kh,np)==nhtol(ih,np)).and. &
+                                            (nhtoj(kh,np)==nhtoj(ih,np)).and.     &
+                                            (indv(kh,np)==indv(ih,np))) THEN
+                                          kkb=ijkb0 + kh
+                                          DO is1=1,2
+                                             DO is2=1,2
+                                                be_n(ih,is1)=be_n(ih,is1)+  &
+                                                     fcoef(ih,kh,is1,is2,np)*  &
+                                                     becp%nc(kkb,is2,n)
+
+                                                be_m(ih,is1)=be_m(ih,is1)+  &
+                                                     fcoef(ih,kh,is1,is2,np)*  &
+                                                     becp%nc(kkb,is2,m)
+                                             ENDDO
+                                          ENDDO
+                                       ENDIF
+                                    ENDDO
+                                ELSE
+                                   DO is1=1,2
+                                      be_n(ih, is1) = becp%nc(ikb, is1, n)
+                                      be_m(ih, is1) = becp%nc(ikb, is1, m)
+                                   ENDDO
+                                ENDIF
+                             ENDDO
+                           !!!!! CHECK: m, n in same order (cf pauli matrices) as above for evec part
+                             !IF (lsigma(1)) THEN
+                                DO ih = 1, nh(np)
+                                   DO jh = 1, nh(np)
+                                      sigma_x_aug = sigma_x_aug &
+                                        + qq(ih,jh,np) * ( be_m(jh,2)*conjg(be_n(ih,1))+ be_m(jh,1)*conjg(be_n(ih,2)) )
+                                   ENDDO
+                                ENDDO
+                             !ENDIF
+                             !IF (lsigma(2)) THEN
+                                DO ih = 1, nh(np)
+                                   DO jh = 1, nh(np)
+                                      sigma_y_aug = sigma_y_aug &
+                                      + qq(ih,jh,np) * (  &
+                                        be_m(jh,1) * conjg(be_n(ih,2)) &
+                                        - be_m(jh,2) * conjg(be_n(ih,1)) &
+                                        ) * (0.0d0, 1.0d0)
+                                   ENDDO
+                                ENDDO
+                             !ENDIF
+                             !IF (lsigma(3)) THEN
+                                DO ih = 1, nh(np)                                   
+                                   DO jh = 1, nh(np)
+                                      sigma_z_aug = sigma_z_aug &
+                                      + qq(ih,jh,np) * ( be_m(jh,1)*conjg(be_n(ih,1)) - be_m(jh,2)*conjg(be_n(ih,2)) )
+                                   ENDDO
+                                ENDDO
+                             !ENDIF
+                             
+                             !
+                             ijkb0 = ijkb0 + nh(np)
+                             !
+                          ENDIF
+                          !
+                       ENDDO
+                       !
+                    ELSE
+                       !
+                       DO na = 1, nat
+                          !
+                          IF ( ityp(na) == np ) ijkb0 = ijkb0 + nh(np)
+                          !
+                       ENDDO
+                       !
+                    ENDIF
+                    !
+                 ENDDO
+
+                 call mp_sum(sigma_x_aug,intra_pool_comm)
+                 call mp_sum(sigma_y_aug,intra_pool_comm)
+                 call mp_sum(sigma_z_aug,intra_pool_comm)
+                 spn_aug(1, counter) = sigma_x_aug
+                 spn_aug(2, counter) = sigma_y_aug
+                 spn_aug(3, counter) = sigma_z_aug
+               endif
+               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+               !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
             ENDDO
          ENDDO
          if(ionode) then ! root node for i/o
@@ -1519,7 +1699,8 @@ SUBROUTINE compute_spin
                   do n=1,m
                      counter=counter+1
                      do s=1,3
-                         write(iun_spn,'(2es26.16)') spn(s,counter)
+                         write(iun_spn,'(2es26.16)') spn(s,counter) + spn_aug(s,counter)
+                         write(iun_spn_aug,'(2es26.16)') spn_aug(s,counter)
                       enddo
                    enddo
                 enddo
@@ -1986,14 +2167,16 @@ SUBROUTINE compute_amn
    !
    INTEGER, EXTERNAL :: find_free_unit
    !
-   COMPLEX(DP) :: amn, zdotc,amn_tmp,fac(2)
+   COMPLEX(DP) :: amn, zdotc,amn_tmp,fac(2), amn_gf
    real(DP):: ddot
-   COMPLEX(DP), ALLOCATABLE :: sgf(:,:)
+   COMPLEX(DP), ALLOCATABLE :: sgf(:,:) !, gf_spinor(:,:), sgf_spinor(:,:)
    INTEGER :: ik, ibnd, ibnd1, iw,i, ikevc, nt, ipol
    CHARACTER (len=9)  :: cdate,ctime
    CHARACTER (len=60) :: header
    LOGICAL            :: any_uspp, opnd, exst,spin_z_pos, spin_z_neg
-   INTEGER            :: istart
+   INTEGER            :: istart, iun_amn_gf
+
+   INTEGER :: iun_debug
 
    !nocolin: we have half as many projections g(r) defined as wannier
    !         functions. We project onto (1,0) (ie up spin) and then onto
@@ -2006,14 +2189,17 @@ SUBROUTINE compute_amn
 
    any_uspp =any (upf(1:ntyp)%tvanp)
 
-   IF(any_uspp .and. noncolin) CALL errore('pw2wannier90',&
-       'NCLS calculation not implimented with USP',1)
+   !IF(any_uspp .and. noncolin) CALL errore('pw2wannier90',&
+   !    'NCLS calculation not implimented with USP',1)
 
    IF (wan_mode=='library') ALLOCATE(a_mat(num_bands,n_wannier,iknum))
 
    IF (wan_mode=='standalone') THEN
       iun_amn = find_free_unit()
       IF (ionode) OPEN (unit=iun_amn, file=trim(seedname)//".amn",form='formatted')
+
+      iun_amn_gf = find_free_unit()
+      IF (ionode) OPEN (unit=iun_amn_gf, file=trim(seedname)//".amn_gf",form='formatted')
    ENDIF
 
    WRITE(stdout,'(a,i8)') '  AMN: iknum = ',iknum
@@ -2024,10 +2210,15 @@ SUBROUTINE compute_amn
       IF (ionode) THEN
          WRITE (iun_amn,*) header
          WRITE (iun_amn,*) nbnd-nexband,  iknum, n_wannier
+
+         WRITE (iun_amn_gf,*) header
+         WRITE (iun_amn_gf,*) nbnd-nexband,  iknum, n_wannier
       ENDIF
    ENDIF
    !
    ALLOCATE( sgf(npwx,n_proj))
+   ALLOCATE( gf_spinor(2*npwx,n_proj))
+   ALLOCATE( sgf_spinor(2*npwx,n_proj))
    !
    IF (any_uspp) THEN
       CALL allocate_bec_type ( nkb, n_wannier, becp)
@@ -2047,6 +2238,16 @@ SUBROUTINE compute_amn
 !      end if
       CALL gk_sort (xk(1,ik), ngm, g, gcutw, npw, igk, g2kin)
       CALL generate_guiding_functions(ik)   ! they are called gf(npw,n_proj)
+
+      !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      !call project_guiding_functions(ik)
+      if(noncolin) then
+        !gf_spinor = (0.d0,0.d0)
+        sgf_spinor = (0.d0,0.d0)
+        !gf_spinor(1:npw,:) = gf(1:npw,:)
+        call orient_gf_spinor
+      endif
+      !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
       !
       !  USPP
       !
@@ -2055,11 +2256,44 @@ SUBROUTINE compute_amn
          ! below we compute the product of beta functions with trial func.
          IF (gamma_only) THEN
             CALL calbec ( npw, vkb, gf, becp, n_proj )
-         ELSE
+         
+         ELSE if (noncolin) then
+                       
+            if (ik == 1) then
+              write(*,*) 'DEBUG gf_spinor', SHAPE(gf_spinor), 'becp', SHAPE(becp%nc), 'vkb', SHAPE(vkb)
+              iun_debug = find_free_unit()
+              IF (ionode) OPEN (unit=iun_debug, file="gf_spinor.dat",form='formatted')
+              write(iun_debug, *) shape(gf_spinor)
+              write(iun_debug, '(10F15.10)') gf_spinor
+              close(iun_debug)
+            endif
+
+            CALL calbec ( npw, vkb, gf_spinor, becp, n_proj )
+
+
+         else
+            write(*,*) 'DEBUG gf', SHAPE(gf), 'becp', SHAPE(becp%nc), 'vkb', SHAPE(vkb)
             CALL calbec ( npw, vkb, gf, becp, n_proj )
          ENDIF
+         
          ! and we use it for the product S|trial_func>
-         CALL s_psi (npwx, npw, n_proj, gf, sgf)
+         if (noncolin) then
+           CALL s_psi (npwx, npw, n_proj, gf_spinor, sgf_spinor)
+
+              if (ik == 1) then
+              write(*,*) 'DEBUG gf_spinor', SHAPE(gf_spinor), 'becp', SHAPE(becp%nc), 'vkb', SHAPE(vkb)
+              iun_debug = find_free_unit()
+              IF (ionode) OPEN (unit=iun_debug, file="sgf_spinor.dat",form='formatted')
+              write(iun_debug, *) shape(sgf_spinor)
+              write(iun_debug, '(10F15.10)') sgf_spinor
+              close(iun_debug)
+            endif
+         else
+           CALL s_psi (npwx, npw, n_proj, gf, sgf)
+         endif
+
+
+
       ELSE
          sgf(:,:) = gf(:,:)
       ENDIF
@@ -2088,6 +2322,65 @@ SUBROUTINE compute_amn
                   ENDDO
                ENDDO
             ENDDO
+        else if (any_uspp) then
+
+            !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+         
+              DO iw = 1,n_proj
+               spin_z_pos=.false.;spin_z_neg=.false.
+               ! detect if spin quantisation axis is along z
+               if((abs(spin_qaxis(1,iw)-0.0d0)<eps6).and.(abs(spin_qaxis(2,iw)-0.0d0)<eps6) &
+                    .and.(abs(spin_qaxis(3,iw)-1.0d0)<eps6)) then
+                  spin_z_pos=.true.
+               elseif(abs(spin_qaxis(1,iw)-0.0d0)<eps6.and.abs(spin_qaxis(2,iw)-0.0d0)<eps6 &
+                    .and.abs(spin_qaxis(3,iw)+1.0d0)<eps6) then
+                  spin_z_neg=.true.
+               endif
+               if(spin_z_pos .or. spin_z_neg) then
+                  ibnd1 = 0
+                  DO ibnd = 1,nbnd
+                     IF (excluded_band(ibnd)) CYCLE
+                     if(spin_z_pos) then
+                        ipol=(3-spin_eig(iw))/2
+                     else
+                        ipol=(3+spin_eig(iw))/2
+                     endif
+                     !istart = (ipol-1)*npwx + 1
+                     amn = (0.0_dp,0.0_dp)
+
+                     amn = zdotc(npw, evc(1, ibnd), 1, sgf_spinor(1, iw), 1)
+                     amn = amn + zdotc(npw, evc(npwx+1, ibnd), 1, sgf_spinor(npwx+1, iw), 1)
+
+                     CALL mp_sum(amn, intra_pool_comm)
+                     ibnd1=ibnd1+1
+
+
+                     amn_gf = (0.0_dp,0.0_dp)
+                     amn_gf = zdotc(npw, evc(1, ibnd), 1, gf_spinor(1, iw), 1)
+                     amn_gf = amn_gf + zdotc(npw, evc(npwx+1, ibnd), 1, gf_spinor(npwx+1, iw), 1)
+                     CALL mp_sum(amn_gf, intra_pool_comm)
+                     IF (ionode) WRITE(iun_amn_gf,'(3i5,2f18.12)') ibnd1, iw, ik, amn_gf
+
+
+                     IF (wan_mode=='standalone') THEN
+                        IF (ionode) WRITE(iun_amn,'(3i5,2f18.12)') ibnd1, iw, ik, amn
+                     ELSEIF (wan_mode=='library') THEN
+                        a_mat(ibnd1,iw+n_proj*(ipol-1),ik) = amn
+                     ELSE
+                        CALL errore('compute_amn',' value of wan_mode not recognised',1)
+                     ENDIF
+                  ENDDO
+                else 
+                  call errore('compute_amn', 'uspp and noncolin not yet with general axis')
+               endif
+             enddo
+                !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
          ELSE
             DO iw = 1,n_proj
                spin_z_pos=.false.;spin_z_neg=.false.
@@ -2133,6 +2426,7 @@ SUBROUTINE compute_amn
                      fac(1)=(1.0_dp/sqrt(1+spin_qaxis(3,iw)))*(spin_qaxis(3,iw))*cmplx(1.0d0,0.0d0,dp)
                      fac(2)=(1.0_dp/sqrt(1-spin_qaxis(3,iw)))*cmplx(spin_qaxis(1,iw),spin_qaxis(2,iw),dp)
                   endif
+                  write(*,*) 'DEBUG general routine', fac(1), fac(2), spin_qaxis(:,iw)
                   ibnd1 = 0
                   DO ibnd = 1,nbnd
                      IF (excluded_band(ibnd)) CYCLE
@@ -2192,6 +2486,44 @@ SUBROUTINE compute_amn
 
    RETURN
 END SUBROUTINE compute_amn
+
+subroutine orient_gf_spinor()
+   use constants, only: eps6
+   use wvfct,           ONLY : npw, npwx
+   use wannier
+
+   implicit none
+
+   integer :: iw, ipol, istart
+   logical :: spin_z_pos, spin_z_neg
+
+
+   gf_spinor = (0.0d0, 0.0d0)
+   DO iw = 1,n_proj
+      spin_z_pos=.false.;spin_z_neg=.false.
+      ! detect if spin quantisation axis is along z
+      if((abs(spin_qaxis(1,iw)-0.0d0)<eps6).and.(abs(spin_qaxis(2,iw)-0.0d0)<eps6) &
+         .and.(abs(spin_qaxis(3,iw)-1.0d0)<eps6)) then
+         spin_z_pos=.true.
+      elseif(abs(spin_qaxis(1,iw)-0.0d0)<eps6.and.abs(spin_qaxis(2,iw)-0.0d0)<eps6 &
+         .and.abs(spin_qaxis(3,iw)+1.0d0)<eps6) then
+         spin_z_neg=.true.
+      endif
+      if(spin_z_pos .or. spin_z_neg) then
+         if(spin_z_pos) then
+            ipol=(3-spin_eig(iw))/2
+         else
+            ipol=(3+spin_eig(iw))/2
+         endif
+
+         istart = (ipol-1)*npwx + 1
+         write(*,*), 'DEBUG orient', iw, spin_z_pos, ipol, istart
+         gf_spinor(istart:istart+npw-1, iw) = gf(1:npw, iw)
+      else
+         call errore('orient_gf_spinor', 'quantization axis not along z')
+      endif
+   enddo
+end subroutine
 !
 !
 SUBROUTINE generate_guiding_functions(ik)
