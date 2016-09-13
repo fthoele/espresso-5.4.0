@@ -1093,9 +1093,6 @@ SUBROUTINE compute_mmn
    
    any_uspp = any(upf(1:ntyp)%tvanp)
 
-   !IF(any_uspp .and. noncolin) CALL errore('pw2wannier90',&
-   !    'NCLS calculation not implimented with USP',1)
-
    ALLOCATE( phase(dffts%nnr), igkq(npwx) )
    ALLOCATE( evcq(npol*npwx,nbnd) )
 
@@ -1193,7 +1190,7 @@ SUBROUTINE compute_mmn
       IF( MOD(ik,10) == 0 ) WRITE (stdout,*)
       FLUSH(stdout)
       ikevc = ik + ikstart - 1
-         CALL davcio (evc, 2*nwordwfc, iunwfc, ikevc, -1 )
+      CALL davcio (evc, 2*nwordwfc, iunwfc, ikevc, -1 )
       CALL gk_sort (xk(1,ik), ngm, g, gcutw, npw, igk, g2kin)
       !
       !  USPP
@@ -1211,11 +1208,7 @@ SUBROUTINE compute_mmn
          ikp = kpb(ik,ib)
 ! read wfc at k+b
          ikpevcq = ikp + ikstart - 1
-!         if(noncolin) then
-!            call davcio (evcq_nc, 2*nwordwfc, iunwfc, ikpevcq, -1 )
-!         else
-            CALL davcio (evcq, 2*nwordwfc, iunwfc, ikpevcq, -1 )
-!         end if
+         CALL davcio (evcq, 2*nwordwfc, iunwfc, ikpevcq, -1 )
          CALL gk_sort (xk(1,ikp), ngm, g, gcutw, npwq, igkq, g2kin)
 ! compute the phase
          phase(:) = (0.d0,0.d0)
@@ -1269,18 +1262,16 @@ SUBROUTINE compute_mmn
                                             phase1 * qb(ih,jh,nt,ind) * &
                                             becp%r(ikb,m) * rbecp2(jkb,n)
                                     ENDDO
-                                    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-                                    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                                  else if (noncolin) then
                                     DO n=1,nbnd
                                        IF (excluded_band(n)) CYCLE
                                        if (lspinorb) then
                                           Mkb(m,n) = Mkb(m,n) + &
                                             phase1 * ( &
-                                              qq_so(ih,jh,1,nt) * conjg( becp%nc(ikb, 1, m) ) * becp2_nc(jkb, 1, n) &
-                                             +qq_so(ih,jh,2,nt) * conjg( becp%nc(ikb, 1, m) ) * becp2_nc(jkb, 2, n) &
-                                             +qq_so(ih,jh,3,nt) * conjg( becp%nc(ikb, 2, m) ) * becp2_nc(jkb, 1, n) &
-                                             +qq_so(ih,jh,4,nt) * conjg( becp%nc(ikb, 2, m) ) * becp2_nc(jkb, 2, n) &
+                                               qq_so(ih,jh,1,nt) * conjg( becp%nc(ikb, 1, m) ) * becp2_nc(jkb, 1, n) &
+                                             + qq_so(ih,jh,2,nt) * conjg( becp%nc(ikb, 1, m) ) * becp2_nc(jkb, 2, n) &
+                                             + qq_so(ih,jh,3,nt) * conjg( becp%nc(ikb, 2, m) ) * becp2_nc(jkb, 1, n) &
+                                             + qq_so(ih,jh,4,nt) * conjg( becp%nc(ikb, 2, m) ) * becp2_nc(jkb, 2, n) &
                                              )
                                        else
                                           Mkb(m,n) = Mkb(m,n) + &
@@ -1289,9 +1280,6 @@ SUBROUTINE compute_mmn
                                               + conjg( becp%nc(ikb, 2, m) ) * becp2_nc(jkb, 2, n) )
                                        endif
                                     ENDDO
-
-                                    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-                                    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                                  ELSE
                                     DO n=1,nbnd
                                        IF (excluded_band(n)) CYCLE
@@ -1366,11 +1354,8 @@ SUBROUTINE compute_mmn
                DO n=1,nbnd
                   IF (excluded_band(n)) CYCLE
                   mmn=(0.d0, 0.d0)
-!                  do ipol=1,2
-!                     mmn = mmn+zdotc (npwq, aux_nc(1,ipol),1,evcq_nc(1,ipol,n),1)
                   mmn = mmn + zdotc (npwq, aux_nc(1,1),1,evcq(1,n),1) &
                        + zdotc (npwq, aux_nc(1,2),1,evcq(npwx+1,n),1)
-!                  end do
                   CALL mp_sum(mmn, intra_pool_comm)
                   Mkb(m,n) = mmn + Mkb(m,n)
                ENDDO
