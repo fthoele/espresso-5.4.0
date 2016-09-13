@@ -1404,6 +1404,7 @@ SUBROUTINE compute_mmn
 
    IF(any_uspp) THEN
       DEALLOCATE (  qb)
+      DEALLOCATE (qq_so)
       CALL deallocate_bec_type (becp)
       IF (gamma_only) THEN
           DEALLOCATE (rbecp2)
@@ -1653,7 +1654,11 @@ SUBROUTINE compute_spin
 
    IF (ionode .and. write_spn .and. noncolin) CLOSE (iun_spn)
 
-   if(write_spn.and.noncolin) deallocate(spn)
+   if(write_spn.and.noncolin) deallocate(spn, spn_aug)
+   if (any_uspp) then
+      deallocate(be_n, be_m)
+      call deallocate_bec_type(becp)
+   endif
 
    WRITE(stdout,*)
    WRITE(stdout,*) ' SPIN calculated'
@@ -2329,7 +2334,7 @@ SUBROUTINE compute_amn
             ENDDO
          ENDIF
       ENDDO  ! k-points
-      DEALLOCATE (sgf,csph)
+      DEALLOCATE (sgf,csph, gf_spinor, sgf_spinor)
    IF(any_uspp) THEN
      CALL deallocate_bec_type (becp)
    ENDIF
