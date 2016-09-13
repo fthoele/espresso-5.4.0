@@ -2312,20 +2312,10 @@ SUBROUTINE compute_amn
                         ipol=(3+spin_eig(iw))/2
                      endif                     
                      amn = (0.0_dp,0.0_dp)
-
                      amn = zdotc(npw, evc(1, ibnd), 1, sgf_spinor(1, iw), 1)
                      amn = amn + zdotc(npw, evc(npwx+1, ibnd), 1, sgf_spinor(npwx+1, iw), 1)
-
                      CALL mp_sum(amn, intra_pool_comm)
-                     ibnd1=ibnd1+1
-
-
-                     amn_gf = (0.0_dp,0.0_dp)
-                     amn_gf = zdotc(npw, evc(1, ibnd), 1, gf_spinor(1, iw), 1)
-                     amn_gf = amn_gf + zdotc(npw, evc(npwx+1, ibnd), 1, gf_spinor(npwx+1, iw), 1)
-                     CALL mp_sum(amn_gf, intra_pool_comm)
-                     IF (ionode) WRITE(iun_amn_gf,'(3i5,2f18.12)') ibnd1, iw, ik, amn_gf
-
+                     ibnd1=ibnd1+1                     
 
                      IF (wan_mode=='standalone') THEN
                         IF (ionode) WRITE(iun_amn,'(3i5,2f18.12)') ibnd1, iw, ik, amn
