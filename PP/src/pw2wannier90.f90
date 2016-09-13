@@ -2174,9 +2174,6 @@ SUBROUTINE compute_amn
 
    any_uspp =any (upf(1:ntyp)%tvanp)
 
-   !IF(any_uspp .and. noncolin) CALL errore('pw2wannier90',&
-   !    'NCLS calculation not implimented with USP',1)
-
    IF (wan_mode=='library') ALLOCATE(a_mat(num_bands,n_wannier,iknum))
 
    IF (wan_mode=='standalone') THEN
@@ -2216,20 +2213,14 @@ SUBROUTINE compute_amn
       IF( MOD(ik,10) == 0 ) WRITE (stdout,*)
       FLUSH(stdout)
       ikevc = ik + ikstart - 1
-!      if(noncolin) then
-!         call davcio (evc_nc, 2*nwordwfc, iunwfc, ikevc, -1 )
-!      else
-         CALL davcio (evc, 2*nwordwfc, iunwfc, ikevc, -1 )
-!      end if
+
+      CALL davcio (evc, 2*nwordwfc, iunwfc, ikevc, -1 )
       CALL gk_sort (xk(1,ik), ngm, g, gcutw, npw, igk, g2kin)
       CALL generate_guiding_functions(ik)   ! they are called gf(npw,n_proj)
 
       !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-      !call project_guiding_functions(ik)
       if(noncolin) then
-        !gf_spinor = (0.d0,0.d0)
         sgf_spinor = (0.d0,0.d0)
-        !gf_spinor(1:npw,:) = gf(1:npw,:)
         call orient_gf_spinor
       endif
       !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -2255,7 +2246,6 @@ SUBROUTINE compute_amn
 
             CALL calbec ( npw, vkb, gf_spinor, becp, n_proj )
 
-
          else
             write(*,*) 'DEBUG gf', SHAPE(gf), 'becp', SHAPE(becp%nc), 'vkb', SHAPE(vkb)
             CALL calbec ( npw, vkb, gf, becp, n_proj )
@@ -2264,20 +2254,9 @@ SUBROUTINE compute_amn
          ! and we use it for the product S|trial_func>
          if (noncolin) then
            CALL s_psi (npwx, npw, n_proj, gf_spinor, sgf_spinor)
-
-              if (ik == 1) then
-              write(*,*) 'DEBUG gf_spinor', SHAPE(gf_spinor), 'becp', SHAPE(becp%nc), 'vkb', SHAPE(vkb)
-              iun_debug = find_free_unit()
-              IF (ionode) OPEN (unit=iun_debug, file="sgf_spinor.dat",form='formatted')
-              write(iun_debug, *) shape(sgf_spinor)
-              write(iun_debug, '(10F15.10)') sgf_spinor
-              close(iun_debug)
-            endif
          else
            CALL s_psi (npwx, npw, n_proj, gf, sgf)
          endif
-
-
 
       ELSE
          sgf(:,:) = gf(:,:)
@@ -2331,8 +2310,7 @@ SUBROUTINE compute_amn
                         ipol=(3-spin_eig(iw))/2
                      else
                         ipol=(3+spin_eig(iw))/2
-                     endif
-                     !istart = (ipol-1)*npwx + 1
+                     endif                     
                      amn = (0.0_dp,0.0_dp)
 
                      amn = zdotc(npw, evc(1, ibnd), 1, sgf_spinor(1, iw), 1)
