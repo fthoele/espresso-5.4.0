@@ -2341,6 +2341,8 @@ SUBROUTINE compute_amn
    WRITE(stdout,'(/)')
    WRITE(stdout,*) ' AMN calculated'
 
+   CALL stop_clock( 'compute_amn' )
+
    RETURN
 END SUBROUTINE compute_amn
 
@@ -2501,7 +2503,7 @@ SUBROUTINE write_band
       ENDDO
    ENDDO
 
-   CALL stop_clock( 'compute_amn' )
+   
 
    RETURN
 END SUBROUTINE write_band
