@@ -48,6 +48,8 @@ module wannier
                             write_unkg,write_uhu,&
                             write_uIu, spn_formatted, uHu_formatted, uIu_formatted !ivo
    ! end change Lopez, Thonhauser, Souza
+   ! run check for regular mesh
+   logical               :: regular_mesh = .true.
    ! input data from nnkp file
    real(DP), allocatable :: center_w(:,:)     ! center_w(3,n_wannier)
    integer,  allocatable :: spin_eig(:)
@@ -109,8 +111,9 @@ PROGRAM pw2wannier90
        seedname, write_unk, write_amn, write_mmn, write_spn, &
    ! begin change Lopez, Thonhauser, Souza
        wvfn_formatted, reduce_unk, write_unkg, write_uhu,&
-       write_uIu, spn_formatted, uHu_formatted, uIu_formatted !ivo
+       write_uIu, spn_formatted, uHu_formatted, uIu_formatted, & !ivo
    ! end change Lopez, Thonhauser, Souza
+       regular_mesh ! change D. Gresch
   !
   ! initialise environment
   !
@@ -798,19 +801,21 @@ SUBROUTINE read_nnkp
         WRITE(stdout,*)  ' numk=',numk, ' iknum=',iknum
         CALL errore( 'pw2wannier90', 'Wrong number of k-points', numk)
      ENDIF
-     DO i=1,numk
-        READ(iun_nnkp,*) xx(1), xx(2), xx(3)
-        CALL cryst_to_cart( 1, xx, bg, 1 )
-        IF(abs(xx(1)-xk(1,i))>eps6.or. &
-             abs(xx(2)-xk(2,i))>eps6.or. &
-             abs(xx(3)-xk(3,i))>eps6) THEN
-           WRITE(stdout,*)  ' Something wrong! '
-           WRITE(stdout,*) ' k-point ',i,' is wrong'
-           WRITE(stdout,*) xx(1), xx(2), xx(3)
-           WRITE(stdout,*) xk(1,i), xk(2,i), xk(3,i)
-           CALL errore( 'pw2wannier90', 'problems with k-points', i )
-        ENDIF
-     ENDDO
+     IF(regular_mesh) THEN
+        DO i=1,numk
+           READ(iun_nnkp,*) xx(1), xx(2), xx(3)
+           CALL cryst_to_cart( 1, xx, bg, 1 )
+           IF(abs(xx(1)-xk(1,i))>eps6.or. &
+                abs(xx(2)-xk(2,i))>eps6.or. &
+                abs(xx(3)-xk(3,i))>eps6) THEN
+              WRITE(stdout,*)  ' Something wrong! '
+              WRITE(stdout,*) ' k-point ',i,' is wrong'
+              WRITE(stdout,*) xx(1), xx(2), xx(3)
+              WRITE(stdout,*) xk(1,i), xk(2,i), xk(3,i)
+              CALL errore( 'pw2wannier90', 'problems with k-points', i )
+           ENDIF
+        ENDDO
+     ENDIF ! regular mesh check
      WRITE(stdout,*) ' - K-points are ok'
 
   ENDIF ! ionode
