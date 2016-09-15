@@ -1481,7 +1481,7 @@ SUBROUTINE compute_spin
    COMPLEX(DP)              :: sigma_x,sigma_y,sigma_z,cdum1,cdum2
    complex(DP), allocatable :: spn(:,:), spn_aug(:,:)
 
-   integer  :: iun_spn_aug, np, is1, is2, kh, kkb
+   integer  :: np, is1, is2, kh, kkb
    complex(dp) :: sigma_x_aug, sigma_y_aug, sigma_z_aug
    COMPLEX(DP), ALLOCATABLE :: be_n(:,:), be_m(:,:)
 
@@ -2109,14 +2109,14 @@ SUBROUTINE compute_amn
    !
    INTEGER, EXTERNAL :: find_free_unit
    !
-   COMPLEX(DP) :: amn, zdotc,amn_tmp,fac(2), amn_gf
+   COMPLEX(DP) :: amn, zdotc,amn_tmp,fac(2)
    real(DP):: ddot
    COMPLEX(DP), ALLOCATABLE :: sgf(:,:) !, gf_spinor(:,:), sgf_spinor(:,:)
    INTEGER :: ik, ibnd, ibnd1, iw,i, ikevc, nt, ipol
    CHARACTER (len=9)  :: cdate,ctime
    CHARACTER (len=60) :: header
    LOGICAL            :: any_uspp, opnd, exst,spin_z_pos, spin_z_neg
-   INTEGER            :: istart, iun_amn_gf
+   INTEGER            :: istart
 
    !nocolin: we have half as many projections g(r) defined as wannier
    !         functions. We project onto (1,0) (ie up spin) and then onto
@@ -2133,10 +2133,7 @@ SUBROUTINE compute_amn
 
    IF (wan_mode=='standalone') THEN
       iun_amn = find_free_unit()
-      IF (ionode) OPEN (unit=iun_amn, file=trim(seedname)//".amn",form='formatted')
-
-      iun_amn_gf = find_free_unit()
-      IF (ionode) OPEN (unit=iun_amn_gf, file=trim(seedname)//".amn_gf",form='formatted')
+      IF (ionode) OPEN (unit=iun_amn, file=trim(seedname)//".amn",form='formatted')      
    ENDIF
 
    WRITE(stdout,'(a,i8)') '  AMN: iknum = ',iknum
@@ -2147,9 +2144,6 @@ SUBROUTINE compute_amn
       IF (ionode) THEN
          WRITE (iun_amn,*) header
          WRITE (iun_amn,*) nbnd-nexband,  iknum, n_wannier
-
-         WRITE (iun_amn_gf,*) header
-         WRITE (iun_amn_gf,*) nbnd-nexband,  iknum, n_wannier
       ENDIF
    ENDIF
    !
